@@ -178,12 +178,12 @@
 
 ---
 
-# 실습 (Hands-on Labs)
+# 실습 (Labs)
 CLI의 명령형 & yaml 파일 선언형 둘 중에 상황에 적합한 것을 빠르게 선택하고 대처하는 것이 중요하다.
 
-## 9. Kubectl Command & Tips (CKA 필수)
+## Kubectl Commands
 
-### 9-1. Pods 관련 실습
+### Pods 관련 실습
 
 YAML 없이 즉시 Pod 생성하기:
 
@@ -204,7 +204,7 @@ kubectl delete pod <pod-name>
 kubectl run web --image=nginx --dry-run=client -o yaml > pod.yaml
 ```
 
-### 9-2. Service 관련 실습
+### Service 관련 실습
 
 Pod를 외부/내부에 노출하기
 
@@ -217,7 +217,7 @@ kubectl expose pod web --type=NodePort --port=80 --name=web-nodeport --dry-run=c
 
 ```
 
-### 9-3. Namespaces 관련 실습
+### Namespaces 관련 실습
 
 ```bash
 # namespace 생성
@@ -230,7 +230,7 @@ kubectl run db --image=redis -n dev
 kubectl config set-context --current --namespace=dev
 ```
 
-### 9-4. 디버깅 및 확인
+### 디버깅 및 확인
 
 ```bash
 # 현재 실행 중인 모든 파드 상세 정보 확인 (-o wide: IP, Node 정보 포함)
