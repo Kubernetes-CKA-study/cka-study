@@ -106,22 +106,29 @@
 
 * **상태 유지(State Enforcement)** 담당.
 * **Loop:** 끊임없이 `Current State`(현재 상태)를 확인하고 `Desired State`(희망 상태)와 일치시킨다.
-* 노드 컨트롤러와 레플리케이션 컨트롤러가 있다.
+* 다양한 관리 목적의 컨트롤러가 있고, 이걸 묶어서 kube-controller-manager로 관리한다.
+
+<img src="img/controller.png" width="600" alt="cntrl">
+
+
+* 그 중 예시로 노드 컨트롤러와 레플리케이션 컨트롤러의 동작을 볼 수 있다.
     * 노드 컨트롤러는 kube-apiserver를 통해 노드의 상태를 모니터링하고 애플리케이션이 계속 실행되도록 필요한 행동을 한다.
-    * 레플리케이션 컨트롤러는 레플리카의 상태를 모니터링하고 원하는 수의 파드가 항상 사용 가능하도록 한다. (파드가 죽으면 재생성까지0
+    * 레플리케이션 컨트롤러는 레플리카의 상태를 모니터링하고 원하는 수의 파드가 항상 사용 가능하도록 한다. (파드가 죽으면 재생성까지 맡음)
 
 
 ### 4-3. Kube Scheduler (The Planner)
 
-* **스케줄링:** 새로 생성된 Pod를 감지하고, **어떤 Node에서 실행할지 결정(Assign)**한다.
+* **스케줄링:** 새로 생성된 Pod를 감지하고, **어떤 Node에서 실행할지 결정**한다.
+* 중요한 것은 스케줄러가 Pod를 실제로 실행하는 것이 아니라, 결정만 하고 실행은 kubelet이 한다는 것이다.
+
+<img src="img/scheduler.png" width="600" alt="schd">
 
 
 * **Process**
-1. **Filtering:** 자원이 부족하거나 조건이 안 맞는 노드 제외.
-2. **Scoring:** 남은 노드 중 가장 적합한 노드 점수 매김.
+1. **Filtering:** 자원이 부족하거나 조건이 안 맞는 노드 제외
+2. **Scoring:** 남은 노드 중 가장 적합한 노드 점수 산정
 
 
-* *주의:* Pod를 실제로 "실행"하는 것은 아님. (실행은 Kubelet이 함)
 
 ---
 
@@ -129,15 +136,35 @@
 
 ### 5-1. Kubelet (The Agent)
 
-* 각 Node의 **선장 대리인**.
+* 각 Node의 **선장 대리인**
 * API Server의 지시를 받아 Pod가 Node에서 잘 동작하도록 관리한다.
 * 주기적으로 Node와 Pod의 상태를 API Server에 보고한다.
 
+
+<img src="img/kubelet.png" width="600" alt="kubelet">
+
+
 ### 5-2. Kube Proxy (The Networker)
 
-* 클러스터 내부의 네트워크 규칙(iptables/IPVS)을 유지 관리한다.
-* Service가 Pod로 트래픽을 전달할 수 있게 해주는 핵심 네트워크 컴포넌트.
-* 서로 다른 노드에 있는 Pod 간의 통신을 가능하게 한다.
+* **목표:** Service(IP/Port)로 들어온 트래픽을 실제 Pod IP로 **전달되게 만드는 역할**을 한다.
+* **노드별 동작:** 각 노드에서 kube-proxy가 **iptables 또는 IPVS 규칙을 프로그래밍**하여 서비스 로드밸런싱/포워딩을 처리한다.
+* **IP 관점 정리**
+    - **Pod IP:** 각 Pod가 가지는 고유 IP. 다른 노드의 Pod와도 라우팅 가능한 **클러스터 내부 IP**.
+    - **Service IP(ClusterIP):** 고정된 가상 IP. 실제 Pod IP 목록(엔드포인트)에 매핑됨.
+    - **Node IP:** 노드 자체의 IP. `NodePort`는 `Node IP:Port`로 외부 진입을 허용.
+* **핵심 동작 흐름(간단)**
+    1. 클라이언트(다른 Pod/노드)가 `Service IP:Port`로 접속.
+    2. kube-proxy가 설치한 규칙이 **DNAT**으로 목적지를 **선택된 Pod IP:Port**로 바꿈.
+    3. 패킷은 CNI 플러그인의 라우팅/오버레이를 통해 해당 Pod로 전달됨.
+* **NodePort/외부 트래픽**
+    - 외부에서 `Node IP:NodePort`로 들어온 트래픽도 동일하게 **Pod IP로 NAT**된다.
+    - 필요 시 **SNAT/masquerade**가 적용되어 **응답 경로가 정상 유지**되게 한다.
+* **포인트:** kube-proxy는 실제 패킷을 프록시로 중계하지 않고, **커널의 네트워크 규칙을 설정**해 고성능으로 동작한다.
+
+
+<img src="img/kube-proxy.png" width="600" alt="proxy">
+
+
 
 ---
 
@@ -185,7 +212,7 @@ CLI의 명령형 & yaml 파일 선언형 둘 중에 상황에 적합한 것을 �
 
 ### Pods 관련 실습
 
-YAML 없이 즉시 Pod 생성하기:
+YAML 없이 즉시 Pod 생성하기
 
 ```bash
 # Pod 목록 보기
