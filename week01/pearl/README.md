@@ -152,7 +152,7 @@
     - **Pod IP:** 각 Pod가 가지는 고유 IP. 다른 노드의 Pod와도 라우팅 가능한 **클러스터 내부 IP**.
     - **Service IP(ClusterIP):** 고정된 가상 IP. 실제 Pod IP 목록(엔드포인트)에 매핑됨.
     - **Node IP:** 노드 자체의 IP. `NodePort`는 `Node IP:Port`로 외부 진입을 허용.
-* **핵심 동작 흐름(간단)**
+* **핵심 동작 흐름**
     1. 클라이언트(다른 Pod/노드)가 `Service IP:Port`로 접속.
     2. kube-proxy가 설치한 규칙이 **DNAT**으로 목적지를 **선택된 Pod IP:Port**로 바꿈.
     3. 패킷은 CNI 플러그인의 라우팅/오버레이를 통해 해당 Pod로 전달됨.
@@ -170,37 +170,398 @@
 
 ## 6. Pods
 
-* **정의:** 쿠버네티스에서 생성하고 관리할 수 있는 배포의 **가장 작은 단위**.
-* **특징:**
-* 하나의 Pod 안에는 하나 이상의 컨테이너가 들어갈 수 있다. (보통 1 Pod = 1 Container)
-* Pod 내부의 컨테이너들은 **Network(IP), Storage(Volume)를 공유**한다.
+* 쿠버네티스에서 생성하고 관리할 수 있는 배포의 **가장 작은 단위**
+
+* 하나의 Pod 안에는 하나 이상의 컨테이너가 들어갈 수 있다. (보통 1 Pod = 1 Container로 많이 사용)
+
+* 파드 하나에 여러 개의 컨테이너를 생성하는 경우는 보통 애플리케이션의 모니터링이나 health check 기능을 적용하기 위함이다.
+
+* Pod 내부의 컨테이너들은 **동일한 Network(IP), 같은 Storage(Volume)를 공유**한다.
 
 
-* **분산 시스템 관점:** "프로세스"가 아니라 "논리 호스트(작은 서버)"의 개념으로 이해해야 한다.
+### Pods with YAML
+* 쿠버네티스에서는 파드, 레플리카셋, 디플로이먼트, 서비스 등의 생성을 위해 yaml 파일을 사용한다.
+* 쿠버네티스의 모든 오브젝트는 기본적으로 4개의 필드를 포함한다.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  containers:
+    - name: nginx-container
+      image: nginx
+```
+
+* `apiVersion`: 오브젝트를 생성할 때 사용하는 쿠버네티스 API 버전이다. 생성하려는 것에 따라 올바른 API 버전을 사용해야 한다.
+
+* `kind`: 어떤 종류의 오브젝트를 생성할 것인지 명시한다.
+
+* `metadata`: 오브젝트를 설명하는 기본적인 데이터로, `name` 이나 `labels` 등 키-값 형식으로 데이터를 정의한다.
+    * `name` 과 `labels` 는 동일한 line에 있어야 한다. 서로는 siblings 관계이고, `metadata` 의 children 관계이다.
+    * 쿠버네티스에서 `metadata` 필드는 쿠버네티스 API에 정의된 필드만 사용할 수 있다.
+    * 대신, `labels` 필드에서는 어떤 값이든 키-값 형태로 정의하여 사용할 수 있다.
+* `spec`: 생성하려는 오브젝트와 관련된 추가 정보를 명시한다.
+* `kubectl create -f pod-definition.yaml` 명령어로 yaml 설정에 맞는 파드를 생성할 수 있다.
+
+
+
 
 ---
 
-## 7. Services
+## 7. ReplicaSets
+
+### High Availability
+
+* 애플리케이션이 만약 어떤 이유로 인해서 충돌이 발생하거나 파드가 fail이 발생했다면 사용자는 애플리케이션에 접근할 수 없게 된다.
+
+
+* 이러한 일을 예방하기 위해서 동시에 여러 개의 파드를 띄운다.
+
+
+* 파드 하나에서 문제가 발생하더라도 다른 파드로 여전히 사용자는 접근할 수 있기 때문이다.
+
+
+* 파드가 하나 뿐이어도 레플리케이션 컨트롤러는 기존의 파드가 fail이 발생해도 자동으로 새로운 파드를 띄운다.
+
+
+* 레플리케이션 컨트롤러는 특정 파드가 항상 실행되도록 보장한다.
+
+
+<img src="img/ha.png" width="600" alt="ha">
+
+
+### Load Balancing & Scaling
+
+* 여러 개의 파드 간 로드밸런싱을 수행한다.
+
+
+* 파드에 들어오는 요청이 많을 경우, 추가로 파드를 생성할 수 있게 지원한다.
+
+
+* 만약 노드 리소스가 부족할 경우, 다른 노드에서 파드를 생성하고 로드밸런싱을 수행한다.
+
+
+### 레플리케이션 컨트롤러와 레플리카셋
+
+동일한 목적으로 만들어진 오브젝트이며, 레플리케이션 컨트롤러는 레플리카셋으로 대체되고 있다.
+
+#### 레플리케이션 컨트롤러
+
+```yaml
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: myapp-rc
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        app: myapp
+        type: front-end
+    spec:
+      containers:
+        - name: nginx-controller
+          image: nginx
+  replicas: 3
+```
+
+* `spec.template` 하위 항목에 파드에서 사용하던 `metadata`, `spec` 을 그대로 적용한다.
+
+* 몇 개의 파드를 유지할 것인지를 spec.replicas 필드에 명시한다.
+
+* 이 명령어를 통해 레플리케이션 컨트롤러를 확인할 수 있다. `kubectl get replicationcontroller`
+
+
+#### 레플리카셋
+
+```yaml
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: myapp-replicaset
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        app: myapp
+        type: front-end
+    spec:
+      containers:
+        - name: nginx-controller
+          image: nginx
+  replicas: 3
+  selector:
+    matchLabels:
+      type: front-end
+```
+
+* `apiVersion` 이 `apps/v1`으로 레플리케이션 컨트롤러와 다르다. (레플리케이션 컨트롤러 쪽이 legacy)
+
+
+
+
+### Labels and Selectors
+
+
+<img src="img/label_selector.png" width="600" alt="ls">
+
+
+클러스터 내 수많은 파드 중에서 레플리카셋이 모니터링하고 관리해야 할 파드를 식별하기 위한 필드이다.
+
+  - Label: 리소스에 붙이는 “태그”
+  - Selector: 그 태그를 기준으로 “대상 고르는 규칙”
+
+
+
+### Scale
+
+스케일링을 하는 방법은 대표적으로 아래와 같다.
+
+1. yaml 파일의 replicas를 변경하고, 명령을 실행한다.
+    
+    `kubectl replace -f replicaset-definition.yaml`
+
+2. kubectl scale 명령어를 사용한다. 
+    - 이 방식을 사용할 경우 yaml 파일의 replicas는 자동으로 업데이트되지 않는다는 점을 주의해야 한다.
+
+    `kubectl scale --replicas=6 -f replicaset myapp-replicaset`
+
+
+---
+## 8. Deployment
+
+### Deployment
+
+디플로이먼트는 레플리카셋보다 상위 개념의 오브젝트이다.
+아래와 같은 기능이 있다.
+
+* 롤링 업데이트 기능
+* 롤백 기능
+* 스케일링/모니터링과 같은 기능을 모든 파드에 일괄 적용하기 위한 pause/resume 기능
+
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deployment
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        app: myapp
+        type: front-end
+    spec:
+      containers:
+        - name: nginx-container
+          image: nginx
+  replicas: 3
+  selector:
+    matchLabels:
+      type: front-end
+```
+
+Deployment 확인 기본 명령어:
+`kubectl get deployments`
+
+
+---
+
+## 9. Services
+
+### Service
+
+서비스는 애플리케이션 안팎의 다양한 구성 요소간의 통신을 가능하게 한다.
+
+애플리케이션을 다른 애플리케이션 또는 사용자와 연결하는 것을 돕는다.
+
+
+MSA 환경에서 느슨한 결합(loose coupling)을 가능하게 한다.
 
 * **문제점:** Pod는 휘발성이다(죽으면 재생성되고 IP가 바뀜).
 * **해결책:** Service는 변하지 않는 고정된 IP(ClusterIP)와 DNS 이름을 제공하여 Pod 그룹에 대한 안정적인 접근을 보장한다.
-* **종류:**
+* **동작:** Service는 셀렉터로 묶인 파드 목록(엔드포인트)을 추적하고, 요청을 여러 파드로 분산한다.
+
+### Service 종류
+
 * `ClusterIP`: 클러스터 내부 통신용 (기본값).
 * `NodePort`: 외부에서 Node의 IP:Port로 접근.
 * `LoadBalancer`: 클라우드 공급자의 로드밸런서 사용.
 
+### NodePort
+
+서비스가 노드의 포트에서 내부 파드에 접근할 수 있도록 한다.
+
+* **targetPort:** 실제 웹 서버가 동작하는 포트
+* **port:** 서비스 자신의 포트
+* **nodePort:** 외부에서 웹 서버에 액세스하는 데 사용하는 노드의 포트 (30,000~32,767)
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-service
+spec:
+  type: NodePort
+  ports:
+    - targetPort: 80
+      port: 80
+      nodePort: 30008
+  selector:
+    app: myapp
+    type: front-end
+```
+
+* targetPort 필드는 입력하지 않을 경우 port 필드의 값과 동일하며, nodePort를 입력하지 않은 경우 범위 내에서 사용 가능한 포트가 랜덤 배정된다.
+
+* 어떤 파드와 연결할 것인지는 파드 레이블에 정의한 값을 셀렉터로 불러온다.
+
+* 셀렉터로 식별할 수 있는 파드가 여러 개라면, 여러 개의 파드에 대해 로드밸런싱을 수행한다.
+
+* kube-proxy가 수행한다.
+  1. NodeIP: nodePort로 들어옴
+  2. 서비스(ClusterIP/port)로 매핑
+  3. 선택된 파드의 targetPort로 전달
+
+
+<img src="img/nodeport.png" width="600" alt="port">
+
+
+
+### ClusterIP
+
+클러스터 안에서 가상 IP를 생성하여 서로 다른 서비스와 상호 통신을 할 수 있게 해준다.
+
+프론트엔드, 백엔드, 데이터베이스와 같이 여러 레이어로 구성된 애플리케이션을 사용할 경우, 여러 파드 간 통신을 원활하게 하기 위한 엔드포인트 역할을 한다.
+
+각 레이어는 다른 레이어에 미칠 영향을 고려할 필요 없이 Scale-out이 가능하다.
+
+
+<img src="img/clusterip.png" width="600" alt="port">
+
+
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: back-end
+spec:
+  type: ClusterIP
+  ports:
+    - targetPort: 80
+      port: 80
+  selector:
+    app: myapp
+    type: back-end
+```
+
 
 
 ---
 
-## 8. Namespaces
+## 10. Namespaces
 
-* **정의:** 하나의 물리적 클러스터를 여러 개의 **논리적 클러스터**로 나누는 개념.
-* **용도:** 개발(Dev), 운영(Prod) 환경 분리 또는 팀별 리소스 격리.
-* **특징:**
-* 리소스 할당량(Resource Quota) 설정 가능.
-* DNS 이름은 `<service-name>.<namespace>.svc.cluster.local` 형식을 따른다.
+* 네임스페이스로 각 환경을 구분짓고, 자원을 각각 할당할 수 있다.
 
+* 네임스페이스 내에서 리소스들은 이름으로 호출할 수 있다.
+
+* default 네임스페이스는 클러스터가 처음 구성될 때 쿠버네티스에 의해 자동 생성된다.
+
+* 내부 목적으로 사용하는 파드와 서비스 등은 사용자에 의해 실수로 삭제되는 것을 방지하기 위해 kube-system 네임스페이스에 생성된다.
+
+* 모든 사용자들이 리소스를 사용 가능하게 하려면 kube-public 네임스페이스에 생성하면 된다.
+
+
+### Namespace Isolation
+
+
+<img src="img/namespace.png" width="600" alt="ns">
+
+
+* 기업이나 프로덕션 환경에서는 네임스페이스 사용을 고려해야 한다.
+* 예를 들어, 네임스페이스를 통해 dev와 prod 환경에서 리소스를 분리할 수 있다.
+* 리소스 쿼터를 통해 네임스페이스별 리소스 사용을 제한할 수 있다.
+
+
+### DNS
+
+같은 네임스페이스의 리소스 간에는 이름만으로 호출이 가능하다.
+
+```text
+mysql.connect("db-service")
+```
+
+다른 네임스페이스의 리소스를 호출하려면 서비스의 DNS 전체 이름을 입력해야 한다.
+
+```text
+mysql.connect("db-service.dev.svc.cluster.local")
+```
+
+yaml 파일에서 metadata.namespace를 명시하면 해당 네임스페이스에 항상 생성된다.
+
+```yaml
+metadata:
+  name: myapp-pod
+  namespace: dev
+```
+
+### 네임스페이스 생성
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+```
+
+또는 아래 명령어를 통해 네임스페이스를 생성할 수 있다.
+
+```bash
+kubectl create namespace dev
+```
+
+### Resource Quota
+
+리소스 쿼터를 통해 네임스페이스에서 리소스를 제한할 수 있다.
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: dev
+spec:
+  hard:
+    pods: "10"
+    requests.cpu: "4"
+    requests.memory: 5Gi
+    limits.cpu: "10"
+    limits.memory: 10Gi
+```
+
+아래 명령어를 통해 리소스 쿼터를 생성한다.
+
+```bash
+kubectl create -f compute-quota.yaml
+```
 
 
 ---
@@ -208,64 +569,115 @@
 # 실습 (Labs)
 CLI의 명령형 & yaml 파일 선언형 둘 중에 상황에 적합한 것을 빠르게 선택하고 대처하는 것이 중요하다.
 
-## Kubectl Commands
+아래는 CKA에서 가장 많이 나오는 유형 기준으로 묶은 커맨드 모음이다.
+반복적으로 사용할 리소스나 복잡한 설정(프로브, 환경변수, 볼륨 등)은 YAML이 더 안전하다.
 
-### Pods 관련 실습
 
-YAML 없이 즉시 Pod 생성하기
+## 1. 기본 리소스 생성/조회/수정/삭제 (core)
 
 ```bash
-# Pod 목록 보기
+# 리소스 조회
 kubectl get pods
+kubectl get all
 
-# Pod 이름에 특정 머릿말이 들어가는걸 검색할 때
-kubectl get pods | grep newpods-
+# 리소스 상세 확인
+kubectl describe pod <pod-name>
 
-# nginx 이미지를 사용하는 'nginx'이라는 Pod 생성
+# 즉시 생성 (간단한 경우)
 kubectl run nginx --image=nginx
+kubectl create deployment web --image=nginx
 
-# Pod 삭제
-kubectl delete pod <pod-name>
-
-# Pod 생성용 YAML 템플릿만 뽑아내기
+# YAML 템플릿 추출 (자주 사용)
 kubectl run web --image=nginx --dry-run=client -o yaml > pod.yaml
+kubectl create deployment web --image=nginx --dry-run=client -o yaml > deploy.yaml
+
+# 선언형 적용/갱신
+kubectl apply -f app.yaml
+kubectl replace -f app.yaml
+
+# 리소스 수정
+kubectl edit deployment web
+kubectl label pod web tier=frontend
+kubectl annotate pod web owner=team-a
+
+# 삭제
+kubectl delete pod <pod-name>
 ```
 
-### Service 관련 실습
-
-Pod를 외부/내부에 노출하기
+## 2. Pod 문제 해결/디버깅 (troubleshooting)
 
 ```bash
-# 'web' Pod를 80 포트로 노출하는 Service 생성 (ClusterIP)
-kubectl expose pod web --port=80 --name=web-service
+# 상태/스케줄 확인
+kubectl get pods -o wide
+kubectl describe pod <pod-name>
 
-# NodePort 타입으로 서비스 생성 (외부 노출) --dry-run 활용
+# 로그 확인
+kubectl logs <pod-name>
+kubectl logs -f <pod-name>
+
+# 컨테이너 내부 명령 실행
+kubectl exec -it <pod-name> -- /bin/sh
+
+# 이벤트 확인 (원인 추적에 유용)
+kubectl get events --sort-by=.metadata.creationTimestamp
+```
+
+## 3. Deployment/ReplicaSet/Rollout (workloads)
+
+```bash
+# 상태 확인
+kubectl get deployments
+kubectl get rs
+
+# 스케일링
+kubectl scale deployment web --replicas=5
+
+# 이미지 업데이트 및 롤아웃 확인
+kubectl set image deployment/web nginx=nginx:1.25
+kubectl rollout status deployment/web
+kubectl rollout history deployment/web
+
+# 롤백/중지/재개
+kubectl rollout undo deployment/web
+kubectl rollout pause deployment/web
+kubectl rollout resume deployment/web
+```
+
+복수 컨테이너, 헬스체크, 리소스 제한이 들어가면 YAML로 정의하는 것이 안전하다.
+
+## 4. Service/Networking (service & expose)
+
+```bash
+# 내부 서비스 생성 (ClusterIP)
+kubectl expose pod web --port=80 --name=web-svc
+
+# NodePort YAML 템플릿 생성
 kubectl expose pod web --type=NodePort --port=80 --name=web-nodeport --dry-run=client -o yaml > service.yaml
 
+# 서비스/엔드포인트 확인
+kubectl get svc
+kubectl describe svc web-svc
+kubectl get endpoints web-svc
+
+# 포트 포워딩 (로컬에서 테스트할 때)
+kubectl port-forward pod/web 8080:80
 ```
 
-### Namespaces 관련 실습
+정확한 nodePort 지정이나 selector 커스터마이징은 YAML로 작성하는 것이 안전하다.
+
+## 5. Namespace & Context (multi-namespace 운영)
 
 ```bash
-# namespace 생성
+# 네임스페이스 확인/생성
+kubectl get ns
 kubectl create ns dev
 
-# 특정 namespace에 pod 생성
-kubectl run db --image=redis -n dev
+# 특정 네임스페이스 조회
+kubectl get pods -n dev
+kubectl get pods --all-namespaces
 
-# 현재 namespace 변경 (매번 -n 치기 귀찮을 때)
+# 현재 컨텍스트 네임스페이스 변경
 kubectl config set-context --current --namespace=dev
 ```
 
-### 디버깅 및 확인
-
-```bash
-# 현재 실행 중인 모든 파드 상세 정보 확인 (-o wide: IP, Node 정보 포함)
-kubectl get pods -o wide
-
-# 특정 파드의 로그 확인 (문제 해결 시 필수)
-kubectl logs web
-
-# 파드 내부로 진입하지 않고 명령 실행 확인
-kubectl exec -it web -- ls /
-```
+YAML에서 metadata.namespace를 지정하면 항상 해당 네임스페이스에 생성된다.
