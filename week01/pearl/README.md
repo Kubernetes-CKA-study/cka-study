@@ -633,11 +633,12 @@ kubectl get rs
 kubectl scale deployment web --replicas=5
 
 # 이미지 업데이트 및 롤아웃 확인
+# rollout: deployment가 새 버전으로 업데이트 될 때 파드가 교체되는 "배포 진행 과정"을 의미
 kubectl set image deployment/web nginx=nginx:1.25
 kubectl rollout status deployment/web
 kubectl rollout history deployment/web
 
-# 롤백/중지/재개
+# rollout 롤백/중지/재개
 kubectl rollout undo deployment/web
 kubectl rollout pause deployment/web
 kubectl rollout resume deployment/web
