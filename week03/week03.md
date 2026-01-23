@@ -44,5 +44,46 @@ kubectl rollout history deployment/myapp-deployment
   kubectl rollout undo deployment myapp-deployment
   ```
 ## 2. Configure Application
+
+### Congigure Environment Variables in App
+
+- env는 배열로 인식. key-value 형식으로 환경 변수 지정   
+<br>  
+- 환경 변수를 설정하는 방법
+1. Plain Key Value
+2. ConfigMap
+3. Secrets     
+<br>
+  
+- ConfigMap : 파드에 app 환경 변수로 key-value 주입
+1. configmap 생성
+   1. imperative
+      `kubectl create configmap <config-name> --from-literal=<key>=<value>...`
+      `kubectl create configmap <config-name> --from-file=<path-to-file>`
+   2. declarative
+      `kubectl create -f [name].yaml`
+2. pod에 주입
+   - pod yaml의 `configMapRef: name:<config-name>`
+
+- Secret
+1. Secrets 생성
+   1. imperative
+      `kubectl create secret generic <secret-name> --from-literal=<key>=<value>...`
+      `kubectl create secret generic <secret-name> --from-file=<path-to-file>`
+   2. declarative
+      `kubectl create -f [name].yaml`
+      - 이 yaml파일에서 중요 내용은 인코딩 형식으로 작성
+2. pod에 주입
+   - pod yaml의 `secretRef: name:<secret-name>`
+```bash
+// encode
+echo -n '[문자열]' | base64
+// decode
+echo -n '[문자열]' | base64 --decode
+```
 ## 3. Scale Application
 ## 4. Self-Healing Application
+
+---
+# Lab
+## + Commands and Arguments in Docker
