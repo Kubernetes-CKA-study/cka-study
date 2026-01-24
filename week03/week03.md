@@ -393,4 +393,21 @@ systemctl start kube-apiserver
 > etcd.service의 --data-dir : etcd가 실제로 바라보는 데이터 위치 (restore 경로와 반드시 같아야함)
 ---
 # Lab
+## Logging & Monitoring
+### Logging & Monitoring
+```bash
+// metrics-server 배포
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+// monitoring 확인
+kubectl top node/pods
+```
+### Application Logs
+- `kubectl logs [name]` : 로그 확인 명령어
+## Application Lifecycle Management
+### Env Variables
+- `kubectl get pod [name] -o yaml > [name].yaml`:yaml 파일 뽑아내기
+
+
+### 
+
 ## + Commands and Arguments in Docker
