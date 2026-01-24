@@ -311,6 +311,86 @@ kubectl describe vpa [name]
 | Best For                | **상태 저장(Stateful) 워크로드**, CPU/메모리 집약적 애플리케이션. 리소스를 일시적으로 다르게 써야할 때 좋음              | **웹 애플리케이션**등 트래픽 변동을 처리하기 위해 빠른 확장이 필요한 상태 비 저장 서비스에 이상적 |
 | Example Use Cases       | 데이터베이스(MySQL, PostgreSQL), JVM 기반 애플리케이션, AI/ML 워크로드      | 웹 서버(Nginx, API 서비스), 메시지 큐, 마이크로서비스 |
 
+# Cluster Maintenance
+## 1. OS Upgrades
+os 업그레이드, 보안 패치 등의 유지 관리 이유로 클러스터의 노드를 제거하는 상황에서의 시나리오와 옵션들에 대해 설명
+
+```bash
+// 기본 설정 5분
+kube-controller-manager --pod-eviction-timeout=5m0s ...
+```
+- 노드가 eviction-timeout을 지나서 온라인이 되면 해당 노드의 파드는 종료 → app 서비스에 문제가 생김
+- `kubectl drain [node_name]` : 해당 명령어를 통해서 노드를 비우고(정상 종료) 클러스터의 다른 노드에서 워크로드들 생성. 해당 노드는 사용 제한
+- `kubectl uncordon [node_name]` : 사용 제한을 명시적으로 풀어줌
+- `kubectl cordon [node_name]` : 해당 노드를 표시
+
+## 2. Cluster Upgrade
+![img5](img/img5.png)
+각 요소의 버전은 위 그림과 같은 관계를 지켜야 함.
+   
+업그레이드 방법은 크게 2가지
+1. master 노드 업그레이드 후 워커 노드 업그레이드
+   - 마스터 업그레이드 동안에는 워커노드 때문에 사용자가 받는 영향을 없지만 관리, 제어, 파드 생성 및 삭제 등이 불가능
+   - 워커 노드 업그레이드
+     - 전략 1 : 한번에 업그레이드. 사용자가 app 사용 불가능
+     - 전략 2 : 한개씩 업그레이드. 해당 노드에 있던 파드들을 다른 노드로 옮기고 업그레이드 끝나면 다시 가져오기
+     - 전략 3 : 업그레이드 버전의 노드를 새로 만들어서 파드 옮기기
+
+[Kubeadm-Upgrade]
+```bash
+// master node 업그레이드 진행
+// 업그레이드 내용 가져오기
+apt-get upgrade -y kubeadm=1.12.0-00
+// 업그레이드 적용
+kubeadm upgrade apply v1.12.0
+→ kubelet은 아직 업그레이드 안됨
+// kubelet에도 업그레이드 따로 적용
+apt-get upgrade -y kubelet=1.12.0-00
+// 재시작
+systemctl restart kubelet
+→ master node 업그레이드 완료
+
+// worker node 업그레이드 진행
+// 업그레이드할 노드 비우기
+kubectl drain [node_name]
+// 업그레이드 내용 가져오기
+apt-get upgrade -y kubelet=1.12.0-00
+// 업그레이드 적용
+kubeadm upgrade node config --kubelet-version v1.12.0
+systemctl restart kubelet
+→ worker node 업그레이드 완료
+// 사용 제한 명시적으로 풀어줘야함
+kubectl uncordon [node_name]
+→ 파드는 자동으로 돌아오지 않음. 다음 노드 drain하면 이 노드에도 다시 파드 할당 됨
+```
+2. 는 어디갔지
+## 3. Backup and Restore Methods
+[K8 클러스터 백업]
+- 선언적 방식으로 만들어진 YAML 파일을 소스 코드 리포지토리에 저장
+- 가장 좋은 방법! → Valero 등 도구 사용
+  - kubectl 명령어 사용
+  - api server에 엑세스하여 쿼리와 클러스터에 생성된 모든 개체의 리소스 구성을 복사본으로 저장
+
+[etcd 백업]
+- 클러스터 자체, 노드 및 클러스터 내에서 생성된 기타 모든 리소스 정보가 저장되어 있음
+- etcd 서버 자체 백업을 선택
+```bash
+// etcd 상태 저장 (현재 디렉토리에)
+etcdctl snapshot save snapshot.db
+// snapshot 정보 확인
+etcdctl snapshot status snapshot.db
+// ectd는 api-server에 종속적이기 때문에 먼저 종료
+systemctl stop kube-apiserver
+// etcd 디렉토리 위치 설정후 snapshot restore (snapshot이 다른 경로에 있으면 명시해줘야함)
+etcdctl snapshot restore snapshot.db --data-dir [경로]
+// 재실행
+systemctl daemon-reload
+systemctl restart etcd
+systemctl start kube-apiserver
+```
+> snapshot 파일 경로 : restore할 때 읽기만 함. 위치 상관 없음
+> restore 경로 : snapshot 내용을 풀어서 저장할 디렉토리
+> etcd.service의 --data-dir : etcd가 실제로 바라보는 데이터 위치 (restore 경로와 반드시 같아야함)
 ---
 # Lab
 ## + Commands and Arguments in Docker
