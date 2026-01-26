@@ -224,7 +224,6 @@ data:
 ```
 
 
-
 ### View Secrets
 시크릿 관련하여 다양한 것을 확인하는 커맨드 목록
 
@@ -326,6 +325,55 @@ spec:
 - 초기화 컨테이너는 여러 개 정의할 수 있고, 순차적으로 실행된다.
 - 초기화 컨테이너가 실패하면 성공할 때까지 파드를 재실행한다.
 
+
+## Autoscaling (2025 Update)
+
+### AutoScaling
+- 워크로드의 트래픽/리소스 사용량에 따라 파드 수나 리소스를 자동으로 조정한다.
+- 보통 HPA/VPA/클러스터 오토스케일러가 함께 쓰인다. (클러스터 오토스케일러는 노드 수 조정)
+
+  ```bash
+  kubectl get hpa
+  kubectl get vpa
+  ```
+
+### HPA (Horizontal Pod Autoscaler)
+
+- CPU/메모리/커스텀 메트릭을 기준으로 레플리카 수를 자동 확장/축소한다.
+- 메트릭 수집을 위해 Metrics-Server가 필요하다.
+  ```
+  kubectl autoscale deployment myapp --cpu-percent=50 --min=2 --max=10
+  kubectl get hpa
+  kubectl describe hpa myapp
+  ```
+
+### VPA (Vertical Pod Autoscaler)
+
+- 파드의 requests/limits 값을 워크로드 사용량에 맞게 자동 조정한다.
+- 보통 파드 재시작이 동반될 수 있으므로 운영 환경에서는 적용 모드(UpdateMode) 주의.
+  ```
+  kubectl get vpa
+  kubectl describe vpa myapp
+  ```
+  
+### Manual Scaling
+
+- 오토스케일링 대신 운영자가 직접 레플리카 수를 지정한다.
+- 임시 대응이나 고정된 부하 환경에서 사용한다.
+  ```
+  kubectl scale deployment myapp --replicas=5
+  kubectl get deploy myapp
+  ```
+
+### In-place Resize of Pods
+
+- 파드를 재생성하지 않고 리소스(requests/limits)를 변경하는 기능.
+- 클러스터 버전/기능 게이트/리소스 정책에 따라 지원 여부가 다르다.
+
+  ```
+  kubectl patch pod myapp-pod --type='json' -p='[{"op":"replace","path":"/spec/containers/0/resources/requests/cpu","value":"500m"}]'
+  kubectl describe pod myapp-pod
+  ```
 
 
 ---
