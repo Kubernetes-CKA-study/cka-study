@@ -406,8 +406,3 @@ kubectl top node/pods
 ## Application Lifecycle Management
 ### Env Variables
 - `kubectl get pod [name] -o yaml > [name].yaml`:yaml 파일 뽑아내기
-
-
-### 
-
-## + Commands and Arguments in Docker
