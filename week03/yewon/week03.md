@@ -88,6 +88,7 @@ echo -n '[문자열]' | base64 --decode
 - 동일한 네트워크 공간 공유 → 서로가 로컬 호스트
 - 동일한 스토리지 볼륨에 엑세스 가능   
 → 멀티 컨테이너 파드에 넣는다.
+
 ```bash
 apiVersion: v1
 kind: Pod
@@ -106,6 +107,7 @@ spec:
   - name: main-app
     image: main-app
 ```
+
 - `spec:` 아래의 컨테이너의 `name:`들은 배열. 여러개의 컨테이너에 사용할 수 있음.
 ### Multi Container Pods Design Patterns
 디자인 패턴은 3가지
