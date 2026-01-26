@@ -63,7 +63,7 @@ kubectl rollout history deployment/myapp-deployment
    2. declarative
       `kubectl create -f [name].yaml`
 2. pod에 주입
-   - pod yaml의 `configMapRef: name:config-name>`
+   - pod yaml의 `configMapRef: name:<config-name>`
 
 - Secret
 1. Secrets 생성
@@ -111,7 +111,7 @@ spec:
 - `spec:` 아래의 컨테이너의 `name:`들은 배열. 여러개의 컨테이너에 사용할 수 있음.
 ### Multi Container Pods Design Patterns
 디자인 패턴은 3가지
-[사진 넣기]
+![img6](img/img6.png)
 1. `Co-located Containers` : 두 컨테이너가 전체 파드 수명 주기 동안 계속 실행
 2. `Regular Init Containers` : 매인 APP 실행 전 초기화 컨테이너 먼저 실행. 종료되면 매인 APP 실행
 3. `Sidecar Containers` : 매인 APP 실행 전 사이드카 컨테이너 먼저 실행. 주 앱과 같이 수명 주기 동안 계속 실행
@@ -408,3 +408,25 @@ kubectl top node/pods
 ## Application Lifecycle Management
 ### Env Variables
 - `kubectl get pod [name] -o yaml > [name].yaml`:yaml 파일 뽑아내기
+
+---
+## Study
+```bash
+// 진주픽!
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+kubectl get pods -n kube-system | grep metrics # 메트릭 서버 확인
+
+kubectl get top node # 노드 관련 메트릭 조회
+```
+
+> // 나령픽!
+> 일반적으로 쿠버네티스 운영 환경에서는 HPA(파드 수평 확장)와 Cluster Autoscaler(노드 수평 확장)를 조합하여 트래픽 변화에 유연하게 대응하는 전략을 주로 사용하며, 
+> VPA는 리소스 사용량을 예측하기 어려운 애플리케이션의 적정 사이즈를 찾는 튜닝 도구로 활용
+```bash
+kubectl drain <노드이름> --ignore-daemonsets
+```
+> --ignore-daemonsets 옵션은 필수적
+> DaemonSet으로 생성된 파드(로그 수집기 등)는 노드 귀속적
+> 다른 곳으로 옮길 수 없기 때문에 이를 무시하고 진행
+
