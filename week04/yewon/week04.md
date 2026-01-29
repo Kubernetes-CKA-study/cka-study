@@ -129,16 +129,155 @@ AlwaysAllow: 모든 요청 허용, AlwaysDeny: 모든 요청 거부, Node, RBAC,
 - kube-apiserver 실행 옵션으로 설정
 - 기본값은 AlwaysAllow
 - 쉼표로 나열해 동시에 사용할 수 있으며, 요청은 지정된 순서대로 처리
-### 클러스터 범위 권한
+### 클러스터 범위 권한 Cluster Roles
+Kubernetes 리소스는 크게 두 가지
+- 네임스페이스 리소스: Pod, Deployment, Service, ConfigMap, Secret 등
+- 클러스터 범위 리소스: Node, PersistentVolume, Namespace 자체, CertificateSigningRequest 등
+  - 클러스터 범위 리소스에 대한 권한은 ClusterRole과 ClusterRoleBinding을 사용
 
+ClusterRole → 클러스터 전체에 적용되는 권한을 정의
+```bash
+# cluster-admin-role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-administrator
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["list", "get", "create", "delete"]
+```
+```bash
+# cluster-admin-role-binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-admin-role-binding
+subjects:
+- kind: User
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-administrator
+  apiGroup: rbac.authorization.k8s.io
+```
+- 클러스터 범위 리소스를 위해 주로 사용 → 네임스페이스 리소스에도 사용 가능 → 모든 네임스페이스에 걸쳐 권한이 적용
+  - e.g. Pod에 대한 권한을 ClusterRole로 부여 → 사용자는 클러스터 내 모든 네임스페이스의 Pod에 접근 가능
 
-### 
+```bash
+// namespace의 모든 resources 읽기
+kubectl api-resources --namespaced=true
 
+// Cluster Scope resources 읽기
+kubectl api-resources --namespaced=false
+```
 
-## 5. Security Contexts
+### C. Service Account
+Kubernetes에는 두 가지 계정 유형
+- 사용자 계정: 사람이 사용하는 계정 → 관리자 개발자
+- 서비스 계정: 애플리케이션, 자동화된 프로세스 → 기계가 사용하는 계정
+  → 클러스터와 상호작용하는 애플리케이션의 신원
+    - Prometheus의 Kubernetes API를 폴링
+    - Jenkins 같은 CI/CD 도구의 애플리케이션 배포
+    - 커스텀 대시보드의 Kubernetes API를 호출
+
+토큰(Token) : 서비스 계정의 신원을 나타내는 역할
+
+**서비스 계정과 토큰의 기본 흐름**
+클러스터가 생성 → 모든 네임스페이스에 기본 서비스 계정 생성 → 파드 생성될 때 기본 서비스 계정과 자동으로 연결 → Kubernetes가 토큰 생성 → 파드 내부의 볼륨 경로에 자동 마운트 → 파드 안의 애플리케이션이 토큰 파일을 읽어 Kubernetes API 호출
+
+- `kubectl get serviceaccounts` : 기본 서비스 계정 조회
+- `kubectl describe pod my-kubernetes-dashboard` : 파드에 연결된 서비스 계정 확인
+
+특정 권한이 필요한 경우 사용자 정의 서비스 계정 생성
+
+- `kubectl create serviceaccount dashboard-sa` : 서비스 계정 생성
+- `kubectl get serviceaccounts` : 생성된 서비스 계정 조회
+```bash
+// ServiceAccount 정의 YAML
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dashboard-sa
+  namespace: default
+// 토큰 자동 마운트 비활성화 (보안 이슈)
+automountServiceAccountToken: false
+```
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-kubernetes-dashboard
+spec:
+  containers:
+  - name: my-kubernetes-dashboard
+    image: my-kubernetes-dashboard
+  // 이 pod에 dashboard-sa 서비스 계정 연결
+  serviceAccountName: dashboard-sa
+```
+클러스터 외부에서 사용하는 경우 수동 생성 사용
+```bash
+// 서비스 계정 토큰 생성 (유효시간 24시간)
+kubectl create token dashboard-sa --duration=24h
+```
+## D. Image Security
+![img8](img/img8.png)
+레지스트리(Registry) : 이미지가 저장되는 중앙 저장소
+- 이미지 생성 및 업데이트 → 레지스트리에 푸시(push)
+- 컨테이너 실행 → 레지스트리에서 이미지를 풀(pull)
+
+기본 레지스트리 : Docker Hub(docker.io), GCR(Google Container Registry)
+**사설 레지스트리(Private Registry)** : 회사 내부에서 운영하는 레지스트리
+- 자격 증명을 통해서만 접근 가능 
+- 파드 정의 파일에서 이미지 이름 = 프라이빗 레지스트리 전체 경로
+
+Secret : Kubernetes가 컨테이너 런타임(Docker 등)에게 자격 증명하기 위해 사용
+- 도커 레지스트리 타입의 Secret 생성
+  - 레지스트리 서버 주소, 사용자 이름, 비밀번호, 이메일 주소
+- 파드 정의 파일의 imagePullSecrets에 해당 Secret을 지정
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  containers:
+  - name: nginx
+    image: private-registry.io/apps/internal-app
+  // 이 부분
+  imagePullSecrets:
+  - name: regcred
+```
+## E. Security Contexts
+**Docker에서의 보안**
+컨테이너 보안은 **프로세스 격리(namespace)** + **권한 제한(capabilities)** 조합으로 이루어짐.
+→ Kubernetes **Security Context**는 이 개념을 Pod/Container 레벨에서 제어할 수 있도록 확장한 것.
+
+Security Contexts: Kubernetes에서 Pod/컨테이너에 보안 관련 설정을 적용하는 기능
+- 파드 수준 : 해당 파드 안의 모든 컨테이너에 공통 적용
+- 파드, 컨테이너 모두 설정 : 컨테이너 수준 설정 우선
+```bash
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod
+spec:
+  containers:
+  - name: ubuntu
+    image: ubuntu
+    command: ["sleep", "3600"]
+    // 이 부분
+    securityContext:
+      runAsUser: 1000
+      // 컨테이너 레벨 지원
+      capabilities:
+        add: ["MAC_ADMIN"]
+```
+
+## F. Network Policies
+
 ## 6. TLS Certificates for Cluster Components
-## 7. Images Securely
-## 8. Network Policies
 
 ## + TLS/PKI 기본 개념
 ### TLS
