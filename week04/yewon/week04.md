@@ -276,7 +276,99 @@ spec:
 ```
 
 ## F. Network Policies
+Ingress & Egress
 
+- **Ingress**: 외부에서 들어오는 트래픽 (예: 웹 서버가 사용자로부터 받는 요청)
+- **Egress**: 외부로 나가는 트래픽 (예: 웹 서버가 API 서버로 요청을 보내는 것)
+
+Kubernetes 네트워킹 : 모든 파드가 별도 설정 없이 서로 통신 가능
+→ 모든 파드 간 트래픽을 허용하는 All-Allow 상태
+→ 보안상 문제 (프런트엔드 파드가 데이터베이스 파드와 직접 통신)
+→ **네트워크 정책(NetworkPolicy) 사용**
+
+![img9](img/img9.png)
+네트워크 정책
+- Kubernetes의 또 하나의 오브젝트
+- 특정 파드에 대해 허용할 트래픽만 명시하고 나머지는 차단
+
+![img10](img/img10.png)
+network policy와 pod에 각각 명시
+![img11](img/img11.png)
+DB pod의 입장에서 들어오는 트래픽 허용 : Ingress
+→ 나가는 트래픽은 명시하지 않아도 허용
+![img12](img/img12.png)
+위에서 설명한 내용 및 그림을 YAML로 작성
+```bash
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+ // 이 네트워크 정책이 적용될 파드 선택
+  podSelector:
+    matchLabels:
+      role: db
+  // 허용 트래픽 방향 설정
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    // 어떤 파드로부터 트래픽 허용할지 설정
+    - podSelector:
+        matchLabels:
+          name: api-pod
+      // 허용 네임스페이스 설정
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: prod
+    // 특정 IP 대역 허용
+    - ipBlock:
+        cidr: 192.168.5.10/32
+    // 허용 포트 설정
+    ports:
+    - protocol: TCP
+      port: 3306
+
+// NetworkPolicy 생성 명령어
+kubectl apply -f db-network-policy.yaml
+```
+→ `-`가 각각의 조건으로 적용 : OR 조건으로 작용
+→ `-`안에서는 모든 조건을 만족해야하는 AND 조건으로 작용
+
+![img13](img/img13.png)
+DB 파드의 입장에서 나가는 트래픽(Egress) 허용
+```bash
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          name: api-pod
+    ports:
+    - protocol: TCP
+      port: 3306
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 192.168.5.10/32
+    ports:
+    - protocol: TCP
+      port: 80
+```
+
+네트워크 정책은 네트워크 플러그인이 지원해야 실제로 적용
+- Calico, Cilium, Weave Net, Romana 등은 지원
+- Flannel은(강의 기준 시점에서) 네트워크 정책을 지원 X
 ## 6. TLS Certificates for Cluster Components
 
 ## + TLS/PKI 기본 개념
