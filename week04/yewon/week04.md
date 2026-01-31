@@ -41,8 +41,83 @@ kube-apiserver에서 사용할 수 있는 인증 방식
 ### 2. 인증서 기반 인증
 #### TLS in Kubernetes
 ![img1](img/img1.png)
+인증서 종류
+1. 서버 인증서 (Serving Certificates) → 서버 보안
+2. 루트 인증서 (Root Certificates) → CA 서명
+3. 클라이언트 인증서 (Client Certificates) → 사용자/컴포넌트 인증
+
+**쿠버네티스에서의 보안**
+Kubernetes 클러스터는 마스터 노드와 워커 노드로 구성
+- 모든 컴포넌트 간 통신은 TLS로 암호화
+- “서버 역할을 하는 컴포넌트”와 “클라이언트 역할을 하는 컴포넌트”를 구분해 인증서를 사용
+
 ![img2](img/img2.png)
+△ 쿠버네티스 컴포넌트 별 암호화 키
+
 ![img3](img/img3.png)
+△ 서버/클라이언트 별 암호화 키와 CA의 키
+
+쿠버네티스에서 인증서
+- 하나 이상의 CA(인증 기관) 에 의해 서명
+- 클러스터 전체에 하나의 CA를 사용 가능
+- 보안 강화를 위해 etcd 전용 CA처럼 컴포넌트별 CA를 분리 가능
+
+##### Generating Certificates
+
+**1. CA 인증서 생성**
+1. CA 개인 키 생성
+2. CSR(인증서 서명 요청) 생성
+3. CA 인증서 생성 (자체 서명) → CA는 개인 키와 루트 인증서 쌍을 가짐
+
+**2. 클라이언트 인증서 생성**
+A. Admin 사용자
+- 개인키 생성 → CSR 생성 → CA 서명
+- CSR에 그룹 정보 추가 필요, 그룹 : `system:masters`
+  
+B. 시스템 컴포넌트용 클라이언트 인증서
+- 위와 같은 방식으로 생성
+- 그룹 정보는 필요 없음
+
+**3. 서버 측 인증서 생성**
+A. etcd 서버
+- 서버 인증서와 키를 생성
+- 고가용성 환경(ETCD 여러대)에서는 peer 인증서도 생성
+
+B. kube-apiserver
+- 인증서에 모든 이름을 SAN(대체 이름) 으로 포함
+  - 별칭이 많기 때문
+  - `kube-apiserver`, `kubernetes`, `kubernetes.default`, `kubernetes.default.svc`, `kubernetes.default.svc.cluster.local`
+- 개인 키 생성 → CSR 생성 → OpenSSL 설정 파일에서 `AltName` 설정 → CA 서명
+
+C. kubelet
+- 각 노드마다 개별 서버 인증서를 생성
+- 노드 이름을 기준으로 인증서 생성
+
+추가로, kube-apiserver와 kubelet은 서버 역할뿐 아니라 클라이언트 역할도 수행
+- `API 서버 → etcd`, `API 서버 → kubelet`, `kubelet → API 서버` 통신에 사용할 인증서도 함께 필요
+- 노드용 클라이언트 인증서
+  - 이름 : `system:node:<노드명>`
+  - 그룹 : `system:nodes`
+- 서로를 검증하기 위해 CA 루트 인증서 사본을 반드시 함께 사용
+- 각 인증서와 키의 위치는 kube-apiserver, kubelet, etcd의 실행 옵션이나 설정 파일에 명시
+
+##### Viewing Certificates
+Kubernetes 인증서 점검 방법
+1. 클러스터 설정 방식 확인
+- 직접 설치, kubeadm 설치 등
+2. 인증서 헬스 체크 준비
+- 먼저 사용 중인 모든 인증서를 식별
+- 확인 항목 : `인증서 파일 경로 및 이름`, `Subject (CN)`, `Alternate Names (SANs)`, `Organization (OU)`, `Issuer (발급자)`, `Expiration Date (만료일)`
+3. 인증서 세부 정보 확인
+- 확인 항목 : `Subject`, `SANs`, `Validity`, `Issuer`
+- 올바른 CN/OU, 필요한 모든 SAN 포함, 올바른 조직/그룹, 올바른 CA 발급, 만료 여부
+4. 문제 발생 시 로그 확인
+
+> 클러스터 인증서 점검 = 인증서 경로 확인 → openssl로 세부 내용 확인 → 체크리스트 검증 → 필요 시 로그 분석
+
+##### Certificates의 관리와 API
+
+
 ## B. Authorization : 권한
 권한 : 접근한 사용자가 무엇을 할 수 있는지를 정의
 
