@@ -39,7 +39,10 @@ kube-apiserver에서 사용할 수 있는 인증 방식
 
 용자 이름, 비밀번호, 토큰을 일반 텍스트 파일에 저장하는 방식은 보안상 안전하지 않기 때문에 권장
 ### 2. 인증서 기반 인증
-
+#### TLS in Kubernetes
+![img1](img/img1.png)
+![img2](img/img2.png)
+![img3](img/img3.png)
 ## B. Authorization : 권한
 권한 : 접근한 사용자가 무엇을 할 수 있는지를 정의
 
@@ -369,46 +372,175 @@ spec:
 네트워크 정책은 네트워크 플러그인이 지원해야 실제로 적용
 - Calico, Cilium, Weave Net, Romana 등은 지원
 - Flannel은(강의 기준 시점에서) 네트워크 정책을 지원 X
-## 6. TLS Certificates for Cluster Components
+## NEW. CRD
+- 복습
+- K8에서 리소스(ETCD에 저장)와 컨트롤러가 있어야 동작
+- 대부분의 컨트롤러는 K8에 기본 내장
+- 아래와 같이 사용자 지정 리소스(CR)와 컨트롤러(CC)를 만들어 사용 가능
 
-## + TLS/PKI 기본 개념
+![img14](img/img14.png)
+- `kubectl create -f flightticket.yml`로 생성 시도
+→ `no matches for kind "FlightTicket" in version "flights.com/v1"`
+→ FlightTicket이라는 리소스 타입을 Kubernetes가 모름
+→ **CRD를 통해 새로운 리소스 타입 정의 필요**
+
+CRD(Custom Resource Definition) : Kubernetes API에 새로운 리소스 타입 등록
+```bash
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: flighttickets.flights.com
+spec:
+  // 네임스페이스/클러스터 중 범위 선택
+  group: flights.com
+  // api 그룹
+  scope: Namespaced
+  names:
+    kind: FlightTicket
+    singular: flightticket
+    plural: flighttickets
+    shortNames:
+    - ft
+  versions:
+  - name: v1
+    // api서버에 제공
+    served: true
+    // ETCD에 제공
+    storage: true
+    schema:
+      // 스키마 정의
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              from:
+                type: string
+              to:
+                type: string
+              number:
+                type: integer
+                minimum: 1
+                maximum: 10
+```
+위 구성들을 모두 정의, 생성하면 동작 가능
+1. CRD 생성
+2. Custom Resource 생성
+3. ETCD 저장
+4. Custom Controller 추가
+
+## NEW. Custom Controller (CC)
+- Custom Controller : 사용자가 정의한 리소스 타입을 관리하는 컨트롤러
+  - 객체 상태를 감시
+  - 외부 API 호출
+  - 기타 작업 수행
+
+- 개발 언어
+  - **Go** (Kubernetes Go client) : 추천
+  - Python : API 호출 비용 비쌈, 어려움
+- 개발 방법
+  1. Go 언어 설치
+  2. GitHub의 sample-controller 클론
+  3. `controller.go` 로직 수정
+  4. 빌드 및 실행 : 실행시 `kubeconfig` 파일 지정 → Kubernetes API 인증
+- 배포 : 컨테이너 이미지로 빌드 후 pod나 deployment로 배포
+
+## + Operator Framework
+Operator Framework : CRD + Controller를 하나로 묶어 패키징/배포할 수 있는 툴킷
+- 하는 일 : 사람 운영자(Human Operator)가 하던 작업을 자동화
+  - 애플리케이션 설치, 유지보수 (백업/복원), 장애 대응 및 문제 해결, 업그레이드 관리
+
+- e.g. etcd Operator
+  - 역할 : Kubernetes에서 EtcdCluster 배포 및 관리
+  - 구성 요소 : EtcdCluster CRD + EtcdCluster Controller
+  - 기능 : - EtcdCluster 배포, 백업, 복구, CRD를 생성하는 것만으로 백업/복구 동작 실행
+
+## + 보안 기본 개념
+### SSH 보안
+SSH = 원격 서버에 안전하게 접속하기 위한 통신 방식
+사용자 인증(User Authentication) 중심 : **“이 서버에 접속하려는 사람이 진짜 사용자냐?”**
+- 인증 방식
+  - 비밀 번호 기반 인증
+  - SSH 키 기반 인증 (비대칭키 기반 인증)
+    ```bash
+    사용자 ──(개인키로 증명)──> 서버
+    ```
+### HTTPS 보안
+HTTPS = 웹이나 API에서 데이터를 안전하게 주고받는 통신 방식
+서버 인증 + 통신 암호화 중심 : **“내가 접속한 이 서버가 진짜 맞아?” + “통신 내용이 안 새고 안 바뀌었어?”**
+- 인증 방식 : TLS(Transport Layer Security)
+  ```bash
+  클라이언트 <───(서버 인증서)─── 서버
+   │                             │
+   └──(대칭키 교환)──>             │
+         │                       │
+   ──(대칭키 암호화 통신)──>        │
+  ```
+  - 서버가 인증서를 보냄
+    - 인증서 : 서버 공개키 + 도메인 정보 + CA 서명
+  - 인증서에 신뢰하는 CA 서명이 있으면 진짜 서버로 인정
 ### TLS
-: 통신 규칙
-“통신이 암호화되었는지”뿐 아니라 “상대가 진짜 서버인지”까지 보장하기 위해 필요
-![img2](img/img2.png)
-![img3](img/img3.png)
-![img4](img/img4.png)
-![img5](img/img5.png)
+TLS (Transport Layer Security) : 네트워크에서 데이터를 암호화해서 안전하게 주고받는 통신 규칙
+→ “통신이 암호화되었는지” + “상대가 진짜 서버인지” 보장 위해 필요
+→ 기밀성 (Confidentiality), 무결성 (Integrity), 인증 (Authentication) 제공
 
-진짜 이 서버가 인증된 서버(내가 원하는)인지 알기위해 인증서 안에 공개 키를 넣어서 보낸다.
-인증서 == “내 공개키 + 이 공개키는 이 도메인의 것이 맞다고 CA가 보증함”
-그 인증서의 진위 여부부터 이해가 잘 안됨.
-![img6](img/img6.png)
+**TLS 연결 시 동작 순서**
+1. 서버 → 인증서 전달
+2. 클라이언트 → CA 서명 검증
+3. 서버 신원 확인 완료
+4. 공개키로 세션키 안전하게 교환
+5. 대칭키 기반 암호화 통신 시작
 
+#### TLS 암호화 방식
+- 기본적인 암호화 방식 : 대칭키 암호화
+  → 대칭키만 사용하면 키 교환 문제 발생
+  → 비대칭키로 세션키(대칭키) 교환
+1. 서버가 Public/Private Key 쌍을 생성
+2. 사용자가 HTTPS로 접속 시, 서버의 Public Key를 제공받음
+3. 사용자는 Public Key로 대칭키를 암호화해 서버로 전송 (클라이언트가 대칭키 생성)
+4. 서버는 Private Key로 이를 복호화해 대칭키 획득
+5. 이제 사용자-서버는 이 대칭키로 안전한 통신 가능
 
-검증 과정
+하지만 해커가 서버를 가장해 Public Key를 제공하면?
+→ 서버 신원 확인이 필요
 
-서버 → 인증서 전달
+#### 인증서와 CA
+**인증서** : “이 공개키는 이 서버의 것이 맞다”는 증명서 (**발급 대상 + 공개키 + 도메인/위치정보 + 유효기간 + CA 서명 포함**)
 
-브라우저 → 인증서 서명 확인
+**CA** (Certificate Authority) : 인증서를 발급하는 신뢰된 기관
+(e.g. symantec, digicert, letsencrypt 등)
+- 인증서에 서명(Sign)
+- CA의 개인키를 가짐
 
-“이 서명, 내가 신뢰하는 CA가 했네?”
+**우리(브라우저)는!**
+- 신뢰 가능한 CA 목록이 미리 들어 있음
+- 각 CA의 공개키도 함께 들어 있음
+1. 인증서의 서명 확인
+2. 서명한 CA가 신뢰 목록에 있는지 확인
+3. 있으면 → 서버 신뢰
 
-OK → 접속 허용
+> 신뢰 체인
+> 암호화 → 인증서 → CA 서명 → 서버
 
-조직 내부 서비스는 공인 CA 대신 사설 CA를 운영하고, 직원 PC/브라우저에 사설 CA 공개키를 설치해 신뢰를 형성
+조직 내부 서비스 보안
+- 공인 CA 대신 사설 CA를 운영
+- 직원 PC/브라우저에 사설 CA 공개키를 설치해 신뢰를 형성
 
-방법:
-
-회사가 자체 CA 운영
-
-직원 PC / 브라우저에 사설 CA 공개키 설치
-
-그 CA가 서명한 인증서는 신뢰됨
 ### PKI
 ![img7](img/img7.png)
+**PKI (Public Key Infrastructure) : 인증서(공개키) 기반 보안 인프라 전체**
+- 구성 요소 : 서버/클라이언트 키 쌍, 인증 기관(CA), 인증서 발급, 서명, 검증 프로세스
 
-전체 흐름 정리하기
+| 구분      | TLS     | PKI       |
+| ------- | ------- | --------- |
+| 정체      | 통신 프로토콜 | 신뢰 인프라    |
+| 역할      | 안전한 연결  | 누굴 믿을지 관리 |
+| 언제 동작?  | 통신할 때   | 사전·사후 전부  |
+| 핵심 키워드  | 암호화     | 신뢰        |
+| 인증서 사용? | ⭕ 사용    | ⭕ 생성·관리   |
+| CA 포함?  | ❌       | ⭕         |
+
 
 ### 키/인증서 파일 네이밍 주의점
 #### 인증서 (Certificate = 공개키 포함)
