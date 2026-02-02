@@ -119,7 +119,7 @@
 
 ### KubeConfig 파일
 
-![kubeconfig](/chapter-07/img/kubeconfig.png)
+![kubeconfig](img/kubeconfig.png)
 
   - `kube-apiserver`에서 클라이언트가 자신을 증명하는 방법을 매번 명령줄에 입력하는 대신, 파일에 저장하여 편리하게 사용하는 방법이다.
   - **구조 (`clusters`, `users`, `contexts`)**
@@ -153,7 +153,7 @@
 
   - **시나리오:** `development` 그룹에 속한 `dev-user`에게 `development` 네임스페이스에서 `Pod`는 모든 작업을 할 수 있지만, `Secret`은 조회만 가능하도록 권한 부여하기
 
-  ![apigroups](/chapter-07/img/apigroups.png)
+  ![apigroups](img/apigroups.png)
   
 
   - 위와 같은 Api Groups가 존재하는데, 각 파일에 어떤 api가 접근 가능한지 설정하는 것이라고 이해하면 된다.
