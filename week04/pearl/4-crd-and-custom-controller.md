@@ -15,6 +15,10 @@
 ## Custom Resource Definition (CRD) 보안
 - CRD는 쿠버네티스에 `Pod`, `Deployment`처럼 커스텀 오브젝트 타입을 정의할 수 있게 해주는 기능
 - 예를 들어, `MyWebApp`, `CronJob` (과거) 같은 것들을 직접 만들 수 있다.
+- **CRD와 Custom Resource의 관계**
+    - **CRD**는 *새로운 리소스의 스키마(설계도)* 를 클러스터에 등록하는 것
+    - **Custom Resource(CR)**는 그 설계도로 실제 생성되는 *인스턴스(실제 객체)* 이다
+    - 즉, **CRD가 먼저 정의되어야 CR을 생성할 수 있다**
 - **보안 관점에서의 핵심**
     - CRD 자체에는 보안 설정이 거의 없으므로, **"누가 이 새로운 커스텀 리소스를 생성(create), 조회(get), 수정(update), 삭제(delete)할 수 있는지"** 컨트롤하는 것이 중요하다.
     - 결국 **RBAC 중요성으로** 귀결된다.
@@ -25,7 +29,7 @@
 ### 실습 포인트 - 1 (CRD에 대한 RBAC 설정)
 - mycompany.com 그룹에 MyWebApp이라는 CRD를 만들고, webapp-admin 역할을 가진 사용자만 이 리소스를 관리할 수 있도록 권한 부여하기
 
-간단한 CRD 정의 및 배포
+간단한 CRD 정의 및 배포 (주석 포함)
 
 ```YAML
 # mywebapp-crd.yaml
@@ -34,11 +38,11 @@ kind: CustomResourceDefinition
 metadata:
   name: mywebapps.mycompany.com
 spec:
-  group: mycompany.com
+  group: mycompany.com              # API Group
   versions:
     - name: v1
-      served: true
-      storage: true
+      served: true                   # API 서버에서 제공
+      storage: true                  # 저장 버전
       schema:
         openAPIV3Schema:
           type: object
@@ -47,8 +51,10 @@ spec:
               type: object
               properties:
                 image:
-                  type: string
-  scope: Namespaced
+                  type: string       # 배포할 이미지
+                url:
+                  type: string       # 서비스 접속 URL
+  scope: Namespaced                  # Namespace 범위 리소스
   names:
     plural: mywebapps
     singular: mywebapp
@@ -62,6 +68,24 @@ spec:
 ```Bash
 kubectl apply -f mywebapp-crd.yaml
 # 이제 kubectl get mwa 명령을 사용할 수 있습니다.
+```
+
+CRD가 등록된 뒤, 실제 Custom Resource(인스턴스)를 생성하는 예시
+
+```YAML
+# mywebapp.yaml
+apiVersion: mycompany.com/v1
+kind: MyWebApp
+metadata:
+  name: mywebapp-sample
+spec:
+  image: nginx:1.25          # 배포할 이미지
+  url: https://example.com   # 서비스 접속 URL
+```
+
+```Bash
+kubectl apply -f mywebapp.yaml
+kubectl get mywebapps
 ```
 
 
