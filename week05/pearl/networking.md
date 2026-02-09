@@ -66,7 +66,6 @@ CoreDNS는 하나의 호스트를 DNS 서버로 설정하기 위해 사용한다
 
 IP 주소와 호스트명 간 매핑을 위해 먼저 서버의 `/etc/hosts` 파일에 모든 엔트리를 기록한다. 그리고 `Corefile`에서 CoreDNS가 이 파일을 참조하도록 설정한다. 아래와 같이 설정하면 CoreDNS가 `/etc/hosts` 파일에서 IP 주소와 호스트명 매핑 정보를 읽어오도록 할 수 있다.
 
-![mapping.png](img/mapping.png)
 
 ## 5. Network Namespace
 
@@ -98,7 +97,6 @@ IP 주소와 호스트명 간 매핑을 위해 먼저 서버의 `/etc/hosts` 파
 
 호스트는 자신만의 인터페이스, 라우팅 테이블, ARP 테이블을 가진다. 그리고 컨테이너는 이러한 정보를 보지 못해야 한다. 아래와 같이 호스트에서 `ip link` 명령을 실행하면 호스트의 eth0이 보이지만 네임스페이스 내부에서 실행하면 loopback 인터페이스만 보이고 호스트의 eth0은 보이지 않는다.
 
-![ip-link.png](img/ip-link.png)
 
 ### 5-3. 네임스페이스 간 연결
 
@@ -129,7 +127,7 @@ IP 주소와 호스트명 간 매핑을 위해 먼저 서버의 `/etc/hosts` 파
 
 ### 5-4. 여러 네임스페이스 연결
 
-![multi-namespaces.png](img/multi-namespaces.png)
+![multi-namespaces.png](img/multi-namespace.png)
 
 1. **브리지 생성**
     
@@ -479,8 +477,6 @@ Service를 생성하면, `서비스 이름 → 서비스 IP`로 매핑되는 DNS
 
 1. **CoreDNS 배포**
     
-    ![corefile.png](img/corefile.png)
-    
     CoreDNS는 `kube-system` 네임스페이스에서 Pod로 실행된다. 설정 파일은  `/etc/coredns/Corefile`이고 configmap으로도 저장되어 있기 때문에 수정이 필요하면 이를 변경하면 된다.
     
 2. **외부 DNS 연동**
@@ -501,8 +497,6 @@ Pod는 Service 이름을 DNS로 해석할 수 있도록 CoreDNS와 연결된다.
 Ingress는 클러스터 외부에서 들어오는 트래픽을 내부 서비스로 연결해 주는 리소스다. 단순히 한 서비스로만 포워딩할 수도 있고, URL 경로나 도메인에 따라 여러 서비스로 나눠 보낼 수도 있다. 다만 Ingress 리소스만으로는 동작하지 않고, 이를 실제로 처리할 Ingress Controller(Nginx 등)를 반드시 함께 배포해야 한다.
 
 ### 15-2. 리소스 구조
-
-![ingress-wear.png](img/ingress-wear.png)
 
 - `apiVersion`: ingress 리소스용 버전
 - `kind`: Ingress
