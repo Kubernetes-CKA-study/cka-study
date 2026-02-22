@@ -249,8 +249,27 @@ spec:
   storageClassName: standard
 ```
 # Section 9: Networking
-
 ## Before Networking
-### Linux Networking Basics
+### Switching and Routing
+![img6](img/img6.png)
+
 ### DNS
+gg
 ### Network Namespaces
+영어 gg
+### Docker Networking
+![img7](img/img7.png)
+
+![img8](img/img8.png)
+
+### CNI (Container Network Interface)
+
+## Cluster Networking
+![img9](img/img9.png)
+![img10](img/img10.png)
+
+## Pod Networking
+![img11](img/img11.png)
+![img12](img/img12.png)
+
+## CNI (Container Network Interface)
