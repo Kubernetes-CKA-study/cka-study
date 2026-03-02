@@ -437,6 +437,58 @@ kubeadm join <master-ip>:<port> --token ...
 
 ![img5](img/img5.png)
 
+Kubernetes는 강력하지만,
+- 하나의 애플리케이션이 여러 개의 Kubernetes 오브젝트로 구성됨
+  - Deployment, Service, PersistentVolume / PVC, Secret, ConfigMap, Job 등
+- 각각 YAML 파일 필요 → 여러 파일에 `kubectl apply` 실행 → 설정 변경 시 모든 YAML 수정 → 업그레이드 시 여러 파일 재편집  
+- 삭제 시 모든 오브젝트 직접 기억하고 삭제
+- yaml 파일 하나에 다 적는 것도 가능하지만, 관리가 어려움
+
+**→  관리 복잡도 급증**
+
+**[Helm이란]**
+
+> Kubernetes의 패키지 관리자
+
+Helm은 여러 Kubernetes 오브젝트를 하나의 **패키지(Chart)** 로 묶음
+
+- WordPress 앱 = 하나의 패키지  
+- 수백 개 오브젝트도 하나로 관리
+
+```
+helm install wordpress
+```
+
+→ 필요한 모든 Kubernetes 오브젝트 자동 생성
+→ Helm은 Kubernetes 운영의 복잡성을 획기적으로 낮추는 핵심 도구이다.
+
+### Helm의 핵심 기능
+
+1. 패키지 관리
+
+- 여러 YAML 파일을 Chart로 묶음
+- 앱 단위로 설치/삭제 가능
+
+2. 값 설정 (values.yaml)
+
+- 설정을 한 곳에서 관리
+- 예 : PV 크기 (20GB → 100GB), 관리자 비밀번호, DB 설정, 사이트 이름 등
+
+3. 업그레이드
+
+- 변경된 부분만 자동 적용
+- 어떤 오브젝트를 수정해야 하는지 Helm이 판단
+
+1. 롤백
+
+- 변경 이력(Revision) 추적
+- 이전 버전으로 복구 가능
+
+5. 삭제
+
+- 해당 앱에 속한 모든 오브젝트 자동 제거
+- 개별 삭제 필요 없음
+
 ```bash
 helm install wordpress
 
@@ -445,23 +497,594 @@ helm upgrade wordpress
 helm rollback wordpress
 
 helm uninstall wordpress
-
 ```
+
+**[Helm의 패러다임 변화]**
+
+| Kubernetes       | Helm                  |
+| ---------------- | --------------------- |
+| 오브젝트 중심    | 애플리케이션 중심     |
+| 개별 리소스 관리 | 패키지 단위 관리      |
+| 수동 수정        | 값 파일 기반 설정     |
+| 롤백 복잡        | 리비전 기반 자동 롤백 |
+
+### Helm의 3가지 역할
+
+1.  패키지 관리자
+2.  설치/삭제 마법사
+3.  릴리스 관리자 (업그레이드 & 롤백)
+
 ## Install Helm
 
-![img6](img/img6.png)
+Helm을 설치하기 전에 반드시 : `kubectl get nodes` 가 정상 동작해야 Helm 사용 가능
+
+- 정상적으로 동작하는 Kubernetes 클러스터 필요
+- `kubectl` 설치 완료
+- 올바른 kubeconfig 설정
+  - 원하는 클러스터를 가리키도록 구성되어 있어야 함
+
+### Helm 설치 가능 운영체제
+
+- Linux, Windows, macOS
+
+### Linux에서 Helm 설치 방법
+
+**1. Snap 사용 (권장, 간단)**
+
+```bash
+sudo snap install helm --classic
+```
+`--classic` 옵션 의미:
+- Helm이 홈 디렉토리 접근 가능
+- kubeconfig 파일 접근 가능
+- Kubernetes 클러스터 연결 가능
+
+
+**2. APT 기반 시스템 (Ubuntu 등)**
+```bash
+sudo apt install helm
+```
+1. Helm 저장소 키 추가
+2. 소스 목록 추가
+3. 패키지 설치
+
+**3. 기타 패키지 매니저**
+
+- 일부 시스템에서는 `pkg install helm` 사용 가능
+
+**4. 설치 후 확인**
+
+```bash
+helm version
+```
+
+### 설치 순서 핵심 정리
+
+| 단계 | 내용                      |
+| ---- | ------------------------- |
+| 1    | Kubernetes 클러스터 준비  |
+| 2    | kubectl 정상 동작 확인    |
+| 3    | kubeconfig 설정           |
+| 4    | Snap 또는 APT로 Helm 설치 |
+| 5    | `helm version`으로 확인   |
 
 ## Helm2 vs Helm3
 
-### Helm 2 vs Helm 3 비교
+Helm은 2016년 첫 출시 이후 발전해왔으며,  
+**Helm 3 (2019년 출시)** 에서 큰 구조적 변화가 있었습니다.
+
+이 강의에서는 Helm 2와 Helm 3의 핵심 차이점을 정리합니다.
+
+---
+
+### 가장 큰 변화 : Tiller 제거
+
+![img7](img/img7.png)
+
+```
+# Helm 2 기본 구조
+Helm CLI → Tiller (Cluster 내부) → Kubernetes API
+```
+
+**Tiller란?**
+- Helm 전용 서버 컴포넌트
+- 클러스터 내부에서 동작
+- Helm 요청을 받아 Kubernetes에 적용
+
+**Tiller 문제점**
+
+1. **보안 문제**
+   - 기본적으로 God Mode 권한
+   - Tiller 접근 가능하면 클러스터 전체 제어 가능
+2. **복잡성 증가**
+   - 사용자 → Tiller → Kubernetes 구조
+   - 중간 계층 추가
+3. **RBAC 이전 시대 설계**
+   - 당시 Kubernetes에 RBAC/CRD 미성숙
+
+```
+# Helm 3 기본 구조
+Helm CLI → Kubernetes API
+```
+
+- Tiller 완전 제거  
+- Helm이 직접 Kubernetes API와 통신  
+- RBAC 기반 권한 관리
+
+**보안 개선**
+
+- kubectl이든 helm이든 동일한 RBAC 적용
+- 사용자 권한을 Kubernetes에서 직접 제어 가능
+- 중간 계층 제거로 구조 단순화
+
+---
+
+### 3-Way Strategic Merge Patch (3방향 병합 전략)
+
+Helm 3의 다른 핵심 개선 사항
+
+Helm은 **Revision(리비전)** 개념을 사용 → 각 Revision은 **스냅샷**처럼 작동
+
+- 설치 → Revision 1
+- 업그레이드 → Revision 2
+- 롤백 → Revision 3
+
+
+**Helm 2의 문제점**
+
+Helm 2는 현재 차트 vs 이전 차트 비교
+
+문제 상황
+
+1. Helm으로 설치 (Revision 1)
+2. 사용자가 kubectl로 수동 수정
+3. Helm은 이를 모름 (Revision 생성 안 됨)
+4. 롤백 수행
+
+→ Helm은 차트 간 차이만 비교, 수동 변경 사항 감지 못함, 제대로 롤백 안 됨
+
+**Helm 3의 개선 방식**
+
+Helm 3는 다음을 비교 (3-Way 비교 수행)
+
+![img8](img/img8.png)
+
+1. 이전 리비전 상태
+2. 현재 차트 상태
+3. 현재 라이브 Kubernetes 상태
+
+결과
+
+- 수동 변경 감지 가능
+- 롤백 시 정확히 원래 상태로 복구
+- 업그레이드 시 사용자 수정 유지 가능
+
+**[핵심 차이 요약]**
 
 | 항목                             | Helm 2        | Helm 3        |
 | -------------------------------- | ------------- | ------------- |
 | Tiller 사용 여부                 | 사용함        | 사용하지 않음 |
 | 3-Way Strategic Merge Patch 지원 | 지원하지 않음 | 지원함        |
 
-![img7](img/img7.png)
 
-![img8](img/img8.png)
+| 항목              | Helm 2             | Helm 3               |
+| ----------------- | ------------------ | -------------------- |
+| Tiller            | 필요               | 제거됨               |
+| 보안              | Tiller 중심        | Kubernetes RBAC 중심 |
+| 구조              | CLI → Tiller → K8s | CLI → K8s            |
+| 롤백 방식         | 2-Way 비교         | 3-Way 비교           |
+| 수동 변경 감지    | 불가               | 가능                 |
+| 업그레이드 안정성 | 낮음               | 높음                 |
 
-##
+## Helm Components
+
+### 1. Helm CLI
+
+- 로컬 시스템에 설치
+- 주요 기능 : install, upgrade, rollback, uninstall
+- Kubernetes API와 직접 통신 (Helm 3 기준)
+
+### 2. Chart (차트)
+
+- Kubernetes 오브젝트를 생성하기 위한 **파일 모음**
+- Helm은 Chart의 지침을 기반으로 클러스터에 오브젝트를 생성
+
+Chart에는 : Deployment, Service, PVC, Secret, 기타 리소스 템플릿, values.yaml, Chart.yaml 등
+
+**[템플리팅 구조]**
+
+Chart 안의 YAML은 고정 값이 아닌 템플릿 형태
+
+```yaml
+image: {{ .Values.image }}
+replicas: {{ .Values.replicaCount }}
+```
+
+실제 값은 `values.yaml`에서 제공
+
+
+### 3. values.yaml
+
+- Chart의 설정 입력 파일
+- 사용자 지정 설정 저장 위치
+- 대부분의 경우 수정해야 하는 유일한 파일
+
+- 예 : 이미지 이름, 복제본 수, 볼륨 크기, 비밀번호, 포트 설정 등
+
+**→ 복잡한 Chart라도 values.yaml만 수정하면 됨**
+
+### 4. Release (릴리스)
+
+**Helm Chart를 클러스터에 한 번 설치한 결과**
+- 릴리스 사용시 동일한 Chart로 여러 개 설치 가능
+
+```bash
+helm install my-site bitnami/wordpress
+```
+- `my-site` → Release 이름
+- `bitnami/wordpress` → Chart
+
+```bash
+helm install dev-site bitnami/wordpress
+helm install prod-site bitnami/wordpress
+```
+
+### 5. Revision (리비전)
+
+**Release의 스냅샷** : 모든 변경 이력 추적 가능
+- 최초 설치 → Revision 1
+- 업그레이드 → Revision 2
+- 롤백 → Revision 3
+
+### 6. Repository (리포지토리)
+
+**Chart 저장소**
+
+예 : Bitnami, TrueCharts, Community Charts, AppCode 등
+
+**[Artifact Hub]**
+
+공식 Chart 검색 플랫폼 : https://artifacthub.io
+
+**[Helm 메타데이터 저장 방식]**
+
+- 메타 데이터 : 설치된 Release, 사용된 Chart, Revision 이력, 상태 정보 등
+- 저장 위치 : Kubernetes 클러스터 내부 Kubernetes Secret 형태
+- 장점:
+  - 팀 전체가 동일 데이터 공유
+  - 클러스터가 살아있는 한 정보 유지
+  - Helm 작업 이력 완전 추적 가능
+
+### 전체 구조 요약
+
+```
+Helm CLI
+   ↓
+Chart (템플릿 + values.yaml)
+   ↓
+Release 생성
+   ↓
+Revision 이력 관리
+   ↓
+메타데이터는 Kubernetes Secret에 저장
+```
+
+## Helm Chart
+
+![img9](img/img9.png)
+
+- Kubernetes 애플리케이션을 설치하기 위한 “설계도 + 설명서”
+  - 여러 YAML 템플릿 파일의 모음
+  - 값 입력 파일 포함
+  - 차트 자체의 메타정보 포함
+
+→ Helm은 Chart를 해석하여 최종 Kubernetes YAML을 생성
+
+### Chart의 핵심 구성 요소
+
+#### 1. templates/ 디렉토리
+
+- 실제 Kubernetes 리소스 템플릿
+
+```yaml
+# 템플릿 문법
+image: {{ .Values.image }}
+replicas: {{ .Values.replicaCount }}
+```
+→ 실제 값은 values.yaml에서 가져옴
+
+#### 2. values.yaml
+
+- 사용자 설정 입력 파일
+  - 이미지 이름, 복제본 수, 비밀번호, 스토리지 크기, 포트 등
+
+#### 3. Chart.yaml
+
+- 차트 자체의 메타데이터 파일
+
+```yaml
+# 예시 필드
+apiVersion: v2
+name: wordpress
+version: 10.1.5
+appVersion: 5.8
+type: application
+```
+
+**[Chart.yaml 주요 필드 설명]**
+
+- **apiVersion**
+  - 차트 API 버전
+  - Helm 3용 차트 → `v2`
+  - Helm 2용 차트 → `v1` 또는 미설정
+  - Helm 3에서는 반드시 `v2` 사용 권장  
+  - Helm 2는 `v2` 필드 인식 못함
+
+- **version**
+  - 차트 자체의 버전
+  - 차트 변경 추적용
+  - 애플리케이션 버전과 무관
+
+- **appVersion**
+  - 실제 배포되는 애플리케이션 버전
+  - 정보 제공 목적
+
+- **name**
+  - 차트 이름
+
+- **description**
+  - 차트 설명
+
+- **type**
+  - application : 기본값, 앱 배포용
+  - library : 다른 차트를 위한 공통 템플릿 제공
+
+- **dependencies**
+  - 다른 Chart를 종속성으로 선언 가능
+  - 예: WordPress → MariaDB 의존
+```yaml
+dependencies:
+  - name: mariadb
+    version: 9.x.x
+    repository: https://charts.bitnami.com/bitnami
+```
+- **기타 선택 필드**
+  - keywords, maintainers, home (프로젝트 URL), icon (아이콘 URL)
+
+### Chart 디렉토리 구조
+
+```
+mychart/
+  Chart.yaml        # Chart 메타데이터
+  values.yaml       # 기본 설정 값
+  templates/        # 템플릿 리소스 정의
+  charts/           # (선택) 의존성 Chart 포함
+  LICENSE           # (선택) 라이선스 정보
+  README.md         # (선택) 설명 문서
+```
+
+### 요약
+
+```
+values.yaml + templates/
+        ↓
+Helm이 템플릿 렌더링
+        ↓
+최종 Kubernetes YAML 생성
+        ↓
+클러스터에 적용
+```
+
+| 구성 요소     | 역할                     |
+| ------------- | ------------------------ |
+| Chart         | 애플리케이션 설치 설계도 |
+| templates     | Kubernetes 리소스 템플릿 |
+| values.yaml   | 사용자 설정 입력         |
+| Chart.yaml    | 차트 메타데이터          |
+| dependencies  | 외부 차트 연결           |
+| apiVersion v2 | Helm 3 전용 차트         |
+
+## Working with Helm
+
+### Helm CLI 기본 사용법 정리
+
+```bash
+# 전체 명령 확인
+# 예 : install, upgrade, rollback, uninstall 등
+helm --help
+```
+
+```bash
+# 하위 명령 도움말
+# repo 관련 명령 확인 (add, list, remove, update 등)
+helm repo --help
+```
+
+**[Chart 검색 방법]**
+
+1. Artifact Hub에서 검색 : https://artifacthub.io
+
+2. CLI에서 검색
+
+- Helm은 검색 위치를 지정해야 함
+
+```bash
+# Hub 검색
+helm search hub wordpress
+```
+```bash
+# 특정 리포지토리 검색
+# → 로컬에 추가된 리포지토리 내에서 검색
+helm search repo wordpress
+```
+
+### Chart 설치 (WordPress 예시)
+
+**1단계: 리포지토리 추가**
+
+```bash
+# Helm이 차트를 다운로드할 위치 등록
+helm repo add bitnami https://charts.bitnami.com/bitnami
+```
+
+**2단계: 설치**
+
+```bash
+helm install my-release bitnami/wordpress
+```
+- `my-release` → 릴리스 이름
+- `bitnami/wordpress` → 차트 경로
+
+**3단계: 설치된 릴리스 확인**
+```bash
+helm list
+```
+- 출력 : 릴리스 이름, 네임스페이스, 상태, 차트 버전, 앱 버전
+
+**4단계: 릴리스 삭제**
+
+```bash
+helm uninstall my-release
+```
+
+### Helm Repository 관리 명령
+
+**리포지토리 목록 확인**
+```bash
+helm repo list
+```
+
+**리포지토리 업데이트**
+```bash
+helm repo update
+```
+**리포지토리 제거**
+```bash
+helm repo remove <repo-name>
+```
+
+## Customizing Charts Parameters
+
+Helm으로 차트를 설치하면 기본적으로 `values.yaml`에 정의된 **기본값** 사용
+
+Helm에서 값을 사용자 지정하는 방법은 **3가지**
+
+### 1. --set 옵션 사용 (간단한 수정)
+
+```bash
+# 직접 값을 덮어씀
+helm install my-release bitnami/wordpress \
+  --set wordpressBlogName="Helm Tutorial" \
+  --set wordpressEmail="john@example.com"
+```
+
+### 2. 사용자 정의 values 파일 사용 (권장)
+
+여러 값을 설정해야 할 경우 별도의 YAML 파일 사용
+
+```yaml
+# custom-values.yaml 생성
+wordpressBlogName: Helm Tutorial
+wordpressEmail: john@example.com
+```
+
+```bash
+# 설치 시 적용
+helm install my-release bitnami/wordpress \
+  --values custom-values.yaml
+
+# 축약형
+helm install my-release bitnami/wordpress \
+  -f custom-values.yaml
+```
+
+### 3. 차트를 로컬로 가져와 직접 수정
+
+기본값 자체를 수정하고 싶을 경우 사용
+
+**1단계: 차트 다운로드**
+
+```bash
+helm pull bitnami/wordpress --untar
+```
+→ wordpress 디렉토리 생성
+
+**2단계: values.yaml 수정**
+
+**3단계: 로컬 차트로 설치**
+
+```bash
+helm install my-release ./wordpress
+```
+
+### 차트 경로 지정 방식 정리
+
+Helm install에서 차트 위치는 두 가지 방식
+- 리포지토리 기반 : `bitnami/wordpress`
+- 로컬 디렉토리 : `./wordpress`
+
+> Helm에서 설정을 변경하는 가장 일반적인 방법은 : `-f custom-values.yaml` 사용
+
+## Lifecycle Management with Helm
+
+**라이프사이클 관리(Lifecycle Management)** : 
+릴리스의 생성 → 업그레이드 → 롤백 → 삭제까지 전체 수명 주기를 관리하는 기능을 의미
+
+
+### Release 개념
+
+- Chart를 설치하면 **Release 생성**
+- Release는 Kubernetes 오브젝트 집합
+- Helm은 각 Release에 속한 모든 리소스를 추적
+→ 동일한 Chart 기반 Release라도 서로 독립적으로 관리 가능
+
+### 명령어
+
+```bash
+# 특정 차트 버전을 설치 가능
+helm install nginx-release bitnami/nginx --version 8.9.1
+
+# 현재 실행 중인 버전 확인
+kubectl get pods
+kubectl describe pod <pod-name>
+
+# 업그레이드 (Upgrade)
+helm upgrade nginx-release bitnami/nginx
+
+# 업그레이드 후 → Revision 번호 증가
+helm list
+```
+
+### Revision 개념
+
+- 설치 → Revision 1
+- 업그레이드 → Revision 2
+- 롤백 → Revision 3
+
+Revision은 **스냅샷 개념**
+
+### 명령어
+
+```bash
+# 히스토리 확인
+# Release의 전체 변경 이력 추적 가능
+helm history nginx-release
+
+# 롤백 (Rollback)
+# 과거 상태와 동일한 새 Revision 생성
+helm rollback nginx-release 1
+```
+
+**[Helm 롤백 한계]**
+- Helm은 다음을 복원
+  - Kubernetes 오브젝트 선언 (Manifest)
+  - Deployment 설정
+  - 이미지 버전
+  - 환경 변수
+
+- Helm은 다음을 복원하지 않음
+  - 데이터베이스 데이터
+  - 영구 볼륨 데이터
+  - 외부 저장소 데이터
+
+- 예 : MySQL Pod는 이전 버전으로 복구되나 DB 내부 데이터는 그대로 유지
